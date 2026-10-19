@@ -69,34 +69,95 @@ CRITICAL QUALITY GUARANTEE:
         baseInstruction += `\n\nConnected GitHub Repository Context:\nRepository: ${repoContext.fullName || 'Connected Project'}\nDescription: ${repoContext.description || 'AI Studio Connected Repository'}\nActive File: ${repoContext.activeFilePath || 'N/A'}\nFile Content:\n\`\`\`\n${repoContext.activeFileContent || 'No active file selected'}\n\`\`\``;
       }
 
-      const contents: any[] = [];
+      // Sanitize and format multi-turn history for Gemini API
+      // Rules:
+      // 1. Must start with role 'user'
+      // 2. Roles must strictly alternate: user -> model -> user -> model
+      // 3. Last turn must be 'user'
+      const rawTurns: { role: 'user' | 'model'; text: string }[] = [];
       for (const h of history) {
-        contents.push({
-          role: h.role === 'user' ? 'user' : 'model',
-          parts: [{ text: h.content }]
+        if (h && typeof h.content === 'string' && h.content.trim()) {
+          rawTurns.push({
+            role: h.role === 'user' ? 'user' : 'model',
+            text: h.content.trim()
+          });
+        }
+      }
+      if (message && typeof message === 'string' && message.trim()) {
+        rawTurns.push({
+          role: 'user',
+          text: message.trim()
         });
       }
-      contents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
+
+      // Drop any leading model messages
+      while (rawTurns.length > 0 && rawTurns[0].role === 'model') {
+        rawTurns.shift();
+      }
+
+      // If no user message was in history, add the incoming message
+      if (rawTurns.length === 0 && message) {
+        rawTurns.push({ role: 'user', text: message });
+      }
+
+      // Merge consecutive turns with the same role to maintain strict alternation
+      const alternatedTurns: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+      for (const turn of rawTurns) {
+        if (alternatedTurns.length > 0 && alternatedTurns[alternatedTurns.length - 1].role === turn.role) {
+          alternatedTurns[alternatedTurns.length - 1].parts[0].text += `\n\n${turn.text}`;
+        } else {
+          alternatedTurns.push({
+            role: turn.role,
+            parts: [{ text: turn.text }]
+          });
+        }
+      }
+
+      // Ensure the very last turn is 'user'
+      if (alternatedTurns.length === 0 || alternatedTurns[alternatedTurns.length - 1].role !== 'user') {
+        alternatedTurns.push({
+          role: 'user',
+          parts: [{ text: message || 'Continue' }]
+        });
+      }
 
       let tLevel = ThinkingLevel.HIGH;
       if (thinkingLevel === "MEDIUM") tLevel = ThinkingLevel.MEDIUM;
       else if (thinkingLevel === "LOW") tLevel = ThinkingLevel.LOW;
       else if (thinkingLevel === "MINIMAL") tLevel = ThinkingLevel.MINIMAL;
 
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: contents,
-        config: {
-          systemInstruction: baseInstruction,
-          temperature: Number(temperature),
-          topP: Number(topP),
-          topK: Number(topK),
-          thinkingConfig: { thinkingLevel: tLevel }
-        }
-      });
+      let activeModel = model || "gemini-3.8-flash";
+      if (activeModel.includes("gemini-2.5-flash")) {
+        activeModel = "gemini-3.8-flash";
+      }
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: activeModel,
+          contents: alternatedTurns,
+          config: {
+            systemInstruction: baseInstruction,
+            temperature: Number(temperature),
+            topP: Number(topP),
+            topK: Number(topK),
+            thinkingConfig: { thinkingLevel: tLevel }
+          }
+        });
+      } catch (genError: any) {
+        console.warn(`Attempt with ${activeModel} failed, retrying with gemini-3.8-flash:`, genError.message);
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: alternatedTurns,
+          config: {
+            systemInstruction: baseInstruction,
+            temperature: Number(temperature),
+            topP: Number(topP),
+            topK: Number(topK),
+            thinkingConfig: { thinkingLevel: tLevel }
+          }
+        });
+      }
 
       const runtimeSeconds = ((Date.now() - startTime) / 1000).toFixed(2);
 
