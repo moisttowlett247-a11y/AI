@@ -25,7 +25,7 @@ async function startServer() {
 
   // API Routes
   
-  // 1. Chat with RepoMind AI
+  // 1. Chat with RepoMind AI (with precise AI Studio settings)
   app.post("/api/chat", async (req, res) => {
     try {
       const {
@@ -44,6 +44,8 @@ async function startServer() {
       if (!message && (!history || history.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
       }
+
+      const startTime = Date.now();
 
       let baseInstruction = customSystemInstruction || `You are RepoMind AI, the world's most advanced AI software engineering expert, operating at maximum possible intelligence. You specialize in ALL programming languages (TypeScript, JavaScript, Python, Rust, Go, C++, C#, Java, Ruby, PHP, Swift, Kotlin, SQL, Solidity, Haskell, HTML/CSS, Shell, etc.).
 
@@ -96,9 +98,12 @@ CRITICAL QUALITY GUARANTEE:
         }
       });
 
+      const runtimeSeconds = ((Date.now() - startTime) / 1000).toFixed(2);
+
       res.json({
         reply: response.text || "I've analyzed your request and formulated the solution below.",
-        usage: response.usageMetadata || null
+        usage: response.usageMetadata || null,
+        runtimeSeconds: Number(runtimeSeconds)
       });
 
     } catch (error: any) {
@@ -169,7 +174,7 @@ CRITICAL QUALITY GUARANTEE:
     }
   });
 
-  // 4. Save file locally and optionally push/commit to GitHub
+  // 4. Save file locally and push/commit to GitHub
   app.post("/api/repository/save-file", async (req, res) => {
     try {
       const { filePath, content, token, repoFullName, commitMessage } = req.body;
@@ -182,6 +187,8 @@ CRITICAL QUALITY GUARANTEE:
       if (!safePath.startsWith(__dirname)) {
         return res.status(403).json({ error: "Access denied" });
       }
+      // Ensure directory exists
+      fs.mkdirSync(path.dirname(safePath), { recursive: true });
       fs.writeFileSync(safePath, content, "utf8");
 
       // If GitHub token and repoFullName are provided, push commit to GitHub
@@ -222,14 +229,43 @@ CRITICAL QUALITY GUARANTEE:
         }
       }
 
-      res.json({ success: true, message: "File saved and synced successfully." });
+      res.json({ success: true, message: "File saved and committed successfully." });
     } catch (error: any) {
       console.error("Save file error:", error);
       res.status(500).json({ error: error.message || "Failed to save file." });
     }
   });
 
-  // 5. Create new GitHub Repository
+  // 5. List GitHub Repositories for connected account
+  app.get("/api/github/repos", async (req, res) => {
+    try {
+      const token = req.query.token as string || req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        return res.status(400).json({ error: "GitHub token is required" });
+      }
+
+      const ghRes = await fetch("https://api.github.com/user/repos?sort=updated&per_page=100", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json",
+          "User-Agent": "RepoMind-AI"
+        }
+      });
+
+      if (!ghRes.ok) {
+        const errData = await ghRes.json();
+        return res.status(ghRes.status).json({ error: errData.message || "Failed to list repositories from GitHub." });
+      }
+
+      const repos = await ghRes.json();
+      res.json({ success: true, repos });
+    } catch (error: any) {
+      console.error("List repos error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch repositories." });
+    }
+  });
+
+  // 6. Create new GitHub Repository
   app.post("/api/github/create-repo", async (req, res) => {
     try {
       const { token, name, description, isPrivate = false } = req.body;
@@ -266,7 +302,7 @@ CRITICAL QUALITY GUARANTEE:
     }
   });
 
-  // 6. Code Operations: Explain, Refactor, Generate, Test
+  // 7. Code Operations
   app.post("/api/code/op", async (req, res) => {
     try {
       const { operation, code, language, instruction } = req.body;
@@ -298,7 +334,7 @@ CRITICAL QUALITY GUARANTEE:
     }
   });
 
-  // 7. Code Simulation / Execution Sandbox
+  // 8. Code Simulation / Execution Sandbox
   app.post("/api/code/execute", async (req, res) => {
     try {
       const { code, language } = req.body;
