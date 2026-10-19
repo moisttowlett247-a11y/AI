@@ -1029,21 +1029,46 @@ export default function App() {
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6 text-xs">
-              <div className="space-y-2">
-                <label className="block font-medium text-slate-300">GitHub Personal Access Token (PAT)</label>
+              <div className="space-y-4">
+                <button
+                  onClick={async () => {
+                    const res = await fetch("/api/auth/github/url");
+                    const { url } = await res.json();
+                    const authWindow = window.open(url, "github_auth", "width=600,height=700");
+                    const handleMessage = (event: MessageEvent) => {
+                      if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
+                        setGithubToken(event.data.token);
+                        window.removeEventListener('message', handleMessage);
+                      }
+                    };
+                    window.addEventListener('message', handleMessage);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-[#2d3139] hover:bg-[#3d4149] text-white px-4 py-3 rounded-xl font-medium"
+                >
+                  <Github className="w-5 h-5" />
+                  Connect GitHub Account (One-Click)
+                </button>
+                
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#2d3139]"></div></div>
+                  <div className="relative flex justify-center text-[10px] uppercase tracking-wider text-slate-500">
+                    <span className="bg-[#1a1d24] px-2">Or use PAT</span>
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <input
                     type="password"
                     value={githubToken}
                     onChange={(e) => setGithubToken(e.target.value)}
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                     className="flex-1 bg-[#111318] border border-[#2d3139] rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-blue-500 font-mono"
                   />
                   <button
                     onClick={() => fetchAccountRepos(githubToken)}
                     className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-medium"
                   >
-                    Sync Account
+                    Sync
                   </button>
                 </div>
               </div>

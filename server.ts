@@ -297,6 +297,39 @@ CRITICAL QUALITY GUARANTEE:
     }
   });
 
+  // GitHub OAuth Endpoints
+  app.get("/api/auth/github/url", (req, res) => {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: "GitHub Client ID not configured" });
+    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo,user&redirect_uri=${process.env.APP_URL}/api/auth/github/callback`;
+    res.json({ url: authUrl });
+  });
+
+  app.get("/api/auth/github/callback", async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.status(400).send("No code provided");
+
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code
+      })
+    });
+    const { access_token } = await tokenRes.json();
+    
+    res.send(`
+      <script>
+        if (window.opener) {
+          window.opener.postMessage({ type: 'GITHUB_AUTH_SUCCESS', token: '${access_token}' }, '*');
+          window.close();
+        }
+      </script>
+    `);
+  });
+
   // 5. List GitHub Repositories for connected account
   app.get("/api/github/repos", async (req, res) => {
     try {
