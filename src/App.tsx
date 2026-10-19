@@ -25,7 +25,12 @@ import {
   BookOpen,
   Send,
   Menu,
-  X
+  X,
+  Sliders,
+  Eye,
+  Activity,
+  PlusCircle,
+  UploadCloud
 } from "lucide-react";
 import { marked } from "marked";
 
@@ -36,11 +41,32 @@ interface Message {
 
 export default function App() {
   // Navigation & State
-  const [activeTab, setActiveTab] = useState<"chat" | "workspace" | "sandbox">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "workspace" | "preview" | "sandbox">("chat");
   const [persona, setPersona] = useState<string>("general");
   const [model, setModel] = useState<string>("gemini-3.8-flash");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
-  
+  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState<boolean>(false);
+
+  // GitHub Management State
+  const [githubToken, setGithubToken] = useState<string>("");
+  const [repoFullName, setRepoFullName] = useState<string>("");
+  const [newRepoName, setNewRepoName] = useState<string>("");
+  const [newRepoDesc, setNewRepoDesc] = useState<string>("");
+  const [isPrivateRepo, setIsPrivateRepo] = useState<boolean>(false);
+  const [isCreatingRepo, setIsCreatingRepo] = useState<boolean>(false);
+  const [commitMessage, setCommitMessage] = useState<string>("");
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<string>("");
+
+  // AI Studio Tuning Config State
+  const [temperature, setTemperature] = useState<number>(0.1);
+  const [topP, setTopP] = useState<number>(0.95);
+  const [topK, setTopK] = useState<number>(64);
+  const [thinkingLevel, setThinkingLevel] = useState<string>("HIGH");
+  const [customSystemInstruction, setCustomSystemInstruction] = useState<string>("");
+  const [lastUsage, setLastUsage] = useState<any>(null);
+
   // Connected GitHub Repository State
   const [repoName, setRepoName] = useState<string>("Connected GitHub Repository");
   const [repoDescription, setRepoDescription] = useState<string>("Synchronized with connected GitHub repository");
@@ -54,7 +80,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      content: "Hello! I am **RepoMind AI**, connected directly to your **GitHub Repository**. I have full context of your codebase and can help you write, debug, explain, refactor, and test code in **any programming language** with human-level reasoning."
+      content: "Hello! I am **RepoMind AI Studio**, your Google AI Studio powered GitHub assistant. You can inspect files, create new GitHub repositories, edit code, commit/push changes, and preview web apps live."
     }
   ]);
   const [inputMessage, setInputMessage] = useState<string>("");
@@ -70,9 +96,11 @@ export default function App() {
   const [sandboxOutput, setSandboxOutput] = useState<string>("// Run code execution simulation to see console output and runtime verification.");
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
 
+  // Live Preview HTML State
+  const [previewHtml, setPreviewHtml] = useState<string>('<!DOCTYPE html>\n<html>\n<head>\n<style>body { font-family: sans-serif; background: #0f172a; color: #fff; padding: 2rem; }</style>\n</head>\n<body>\n<h1>Live Web App Preview</h1>\n<p>Generated UI or HTML components will render here in real-time.</p>\n</body>\n</html>');
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Load connected repository files on mount
   useEffect(() => {
     fetchRepositoryFiles();
   }, []);
@@ -138,6 +166,66 @@ export default function App() {
     else setWorkspaceLanguage('plaintext');
   };
 
+  const handleSaveAndCommit = async () => {
+    setIsSaving(true);
+    setSaveStatus("");
+    try {
+      const res = await fetch("/api/repository/save-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: activeFilePath,
+          content: workspaceCode,
+          token: githubToken,
+          repoFullName,
+          commitMessage: commitMessage || `Update ${activeFilePath} via RepoMind AI Studio`
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSaveStatus("Successfully saved and committed!");
+      } else {
+        setSaveStatus(`Error: ${data.error}`);
+      }
+    } catch (err: any) {
+      setSaveStatus(`Error: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateNewRepo = async () => {
+    if (!githubToken || !newRepoName) {
+      alert("Please enter your GitHub Personal Access Token and a repository name.");
+      return;
+    }
+    setIsCreatingRepo(true);
+    try {
+      const res = await fetch("/api/github/create-repo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: githubToken,
+          name: newRepoName,
+          description: newRepoDesc,
+          isPrivate: isPrivateRepo
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRepoFullName(data.repo.full_name);
+        alert(`Successfully created GitHub repository: ${data.repo.full_name}`);
+        setIsGitHubModalOpen(false);
+      } else {
+        alert(`Failed to create repository: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error creating repository: ${err.message}`);
+    } finally {
+      setIsCreatingRepo(false);
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputMessage.trim() || isGenerating) return;
@@ -150,7 +238,7 @@ export default function App() {
 
     try {
       const repoContext = {
-        fullName: repoName,
+        fullName: repoFullName || repoName,
         description: repoDescription,
         activeFilePath,
         activeFileContent: workspaceCode
@@ -164,13 +252,21 @@ export default function App() {
           history: messages,
           persona,
           repoContext,
-          model
+          model,
+          temperature,
+          topP,
+          topK,
+          customSystemInstruction,
+          thinkingLevel
         })
       });
 
       const data = await res.json();
       if (data.reply) {
         setMessages([...newMessages, { role: "model", content: data.reply }]);
+        if (data.usage) {
+          setLastUsage(data.usage);
+        }
       } else {
         setMessages([...newMessages, { role: "model", content: "Error: No response generated from AI." }]);
       }
@@ -250,7 +346,7 @@ export default function App() {
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       
       {/* TOP NAVIGATION BAR (Strict 3-zone contract) */}
-      <header className="flex items-center justify-between gap-4 px-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md z-30 shrink-0">
+      <header className="flex items-center justify-between gap-4 px-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md z-30 shrink-0">
         
         {/* Zone 1: Wordmark & Mobile Hamburger */}
         <div className="flex items-center gap-3 shrink-0">
@@ -264,56 +360,78 @@ export default function App() {
             <Cpu className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
           <div>
-            <span className="text-base md:text-lg font-bold tracking-tight text-white whitespace-nowrap">RepoMind AI</span>
-            <span className="text-[9px] md:text-[10px] text-blue-400 font-mono block -mt-1 truncate max-w-[120px] md:max-w-none">Connected GitHub Repo</span>
+            <span className="text-base md:text-lg font-bold tracking-tight text-white whitespace-nowrap">RepoMind AI Studio</span>
+            <span className="text-[9px] md:text-[10px] text-blue-400 font-mono block -mt-1 truncate max-w-[120px] md:max-w-none">GitHub Management & AI</span>
           </div>
         </div>
 
         {/* Zone 2: Navigation Links / Workspace Tabs */}
-        <nav className="hidden md:flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800/80">
+        <nav className="hidden lg:flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800/80">
           <button
             onClick={() => setActiveTab("chat")}
-            className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
             AI Chat
           </button>
           <button
             onClick={() => setActiveTab("workspace")}
-            className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'workspace' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'workspace' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Workspace
+            Code Workspace
+          </button>
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'preview' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            Live Preview
           </button>
           <button
             onClick={() => setActiveTab("sandbox")}
-            className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'sandbox' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'sandbox' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Sandbox
+            Sandbox & Tests
           </button>
         </nav>
 
-        {/* Zone 3: Connected GitHub Status Badge */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <Github className="w-3.5 h-3.5 text-slate-200" />
-            <span className="font-medium">Synced</span>
-          </div>
+        {/* Zone 3: GitHub Manager, AI Studio Config, & Synced Badge */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => setIsGitHubModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl bg-slate-900 text-slate-200 border border-slate-800 hover:bg-slate-800 transition-all shadow-sm"
+          >
+            <Github className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">GitHub Manager</span>
+          </button>
+
+          <button
+            onClick={() => setIsConfigOpen(!isConfigOpen)}
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-xl transition-all border ${isConfigOpen ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-slate-900 text-slate-200 border-slate-800 hover:bg-slate-800'}`}
+          >
+            <Sliders className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">AI Config</span>
+          </button>
         </div>
       </header>
 
-      {/* MOBILE TABS BAR (Visible only on mobile) */}
-      <div className="md:hidden flex items-center justify-around bg-slate-900 border-b border-slate-800 p-1 shrink-0">
+      {/* MOBILE TABS BAR */}
+      <div className="lg:hidden flex items-center justify-around bg-slate-900 border-b border-slate-800 p-1 shrink-0">
         <button
           onClick={() => setActiveTab("chat")}
           className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'chat' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
         >
-          AI Chat
+          Chat
         </button>
         <button
           onClick={() => setActiveTab("workspace")}
           className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'workspace' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
         >
           Workspace
+        </button>
+        <button
+          onClick={() => setActiveTab("preview")}
+          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'preview' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
+        >
+          Preview
         </button>
         <button
           onClick={() => setActiveTab("sandbox")}
@@ -326,7 +444,7 @@ export default function App() {
       {/* MAIN WORKSPACE LAYOUT */}
       <div className="flex flex-1 overflow-hidden relative">
         
-        {/* SIDEBAR: Connected Repository File Inspector (Desktop + Mobile Drawer) */}
+        {/* SIDEBAR: Connected Repository File Inspector (Drawer) */}
         <aside className={`
           absolute md:relative inset-y-0 left-0 z-20 w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-transform duration-300
           ${isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'}
@@ -335,11 +453,11 @@ export default function App() {
           <div className="p-4 border-b border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Repository Files</span>
-              <button onClick={fetchRepositoryFiles} title="Refresh Repository Files" className="text-slate-400 hover:text-white transition-colors p-1">
+              <button onClick={fetchRepositoryFiles} title="Refresh Files" className="text-slate-400 hover:text-white transition-colors p-1">
                 <RefreshCw className={`w-3.5 h-3.5 ${isRepoLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 truncate mb-3">{repoDescription}</p>
+            <p className="text-[11px] text-blue-400 font-mono truncate mb-3">{repoFullName || 'Connected Workspace'}</p>
 
             {/* File Search */}
             <div className="relative">
@@ -378,8 +496,8 @@ export default function App() {
                 onChange={(e) => setModel(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
-                <option value="gemini-3.8-flash">Gemini 3.8 Flash (Fast)</option>
-                <option value="gemini-4-argon">Gemini 4 Argon (Advanced)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (Fast)</option>
+                <option value="gemini-4-argon">gemini-4-argon (Advanced)</option>
               </select>
             </div>
           </div>
@@ -452,7 +570,7 @@ export default function App() {
                     </div>
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 md:p-4 text-xs text-slate-400 flex items-center gap-3">
                       <RefreshCw className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
-                      <span className="truncate">RepoMind AI is reasoning at maximum intelligence...</span>
+                      <span className="truncate">RepoMind AI Studio is generating bug-free code...</span>
                     </div>
                   </div>
                 )}
@@ -464,7 +582,7 @@ export default function App() {
                 <form onSubmit={handleSendMessage} className="flex gap-2 md:gap-3 max-w-5xl mx-auto">
                   <input
                     type="text"
-                    placeholder="Ask any coding question in any language..."
+                    placeholder="Ask any coding question in any language (zero bugs guaranteed)..."
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 md:px-4 py-2.5 md:py-3 text-xs md:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 shadow-inner"
@@ -474,7 +592,7 @@ export default function App() {
                     disabled={isGenerating || !inputMessage.trim()}
                     className="px-4 md:px-6 py-2.5 md:py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs md:text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 shrink-0"
                   >
-                    <span className="hidden sm:inline">Ask AI</span>
+                    <span className="hidden sm:inline">Run AI</span>
                     <Send className="w-4 h-4" />
                   </button>
                 </form>
@@ -544,6 +662,26 @@ export default function App() {
                 </div>
               </div>
 
+              {/* GitHub Commit Bar */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/50 border border-slate-800 p-3 rounded-xl">
+                <input
+                  type="text"
+                  placeholder="Commit message (e.g. Update features)..."
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={handleSaveAndCommit}
+                  disabled={isSaving}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-semibold text-white rounded-lg transition-all flex items-center gap-1.5 shadow-md"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>{isSaving ? "Saving & Pushing..." : "Commit & Push to GitHub"}</span>
+                </button>
+                {saveStatus && <span className="text-xs text-emerald-400 font-medium">{saveStatus}</span>}
+              </div>
+
               {/* Editor & Result Split Grid */}
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 overflow-hidden">
                 
@@ -591,7 +729,57 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: SANDBOX & TESTS */}
+          {/* TAB 3: LIVE PREVIEW PLAYGROUND */}
+          {activeTab === 'preview' && (
+            <div className="flex-1 flex flex-col overflow-hidden p-4 md:p-6 gap-4">
+              <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Live Web App Preview Sandbox</h2>
+                  <p className="text-xs text-slate-400">Test and render HTML, CSS, and JS components in real-time.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([previewHtml], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                  }}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Open in New Tab</span>
+                </button>
+              </div>
+
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
+                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800">
+                    <span className="text-xs font-mono text-slate-400">HTML / UI Code Source</span>
+                  </div>
+                  <textarea
+                    value={previewHtml}
+                    onChange={(e) => setPreviewHtml(e.target.value)}
+                    className="flex-1 bg-slate-950 p-4 font-mono text-xs text-slate-200 resize-none focus:outline-none leading-relaxed"
+                  />
+                </div>
+                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-mono text-slate-300">Live Render Frame</span>
+                  </div>
+                  <div className="flex-1 bg-white overflow-hidden">
+                    <iframe
+                      srcDoc={previewHtml}
+                      title="Live Preview"
+                      className="w-full h-full border-0"
+                      sandbox="allow-scripts allow-modals"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: SANDBOX & TESTS */}
           {activeTab === 'sandbox' && (
             <div className="flex-1 flex flex-col overflow-hidden p-4 md:p-6 gap-4 md:gap-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
@@ -623,6 +811,204 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* GITHUB MANAGER MODAL */}
+      {isGitHubModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2">
+                <Github className="w-5 h-5 text-blue-400" />
+                <h3 className="text-sm font-semibold text-white">GitHub Repository Manager</h3>
+              </div>
+              <button onClick={() => setIsGitHubModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            {/* Token Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-300 block">GitHub Personal Access Token (PAT)</label>
+              <input
+                type="password"
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[10px] text-slate-500">Required for creating new repositories and pushing commits to GitHub.</p>
+            </div>
+
+            {/* Connected Repo Full Name */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-300 block">Active Repository (owner/repo)</label>
+              <input
+                type="text"
+                placeholder="e.g. username/my-repo"
+                value={repoFullName}
+                onChange={(e) => setRepoFullName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <hr className="border-slate-800" />
+
+            {/* Create New Repository Form */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <PlusCircle className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-semibold text-white uppercase tracking-wider">Create New GitHub Repository</h4>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400 block">Repository Name</label>
+                <input
+                  type="text"
+                  placeholder="my-awesome-project"
+                  value={newRepoName}
+                  onChange={(e) => setNewRepoName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs text-slate-400 block">Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="Built with RepoMind AI Studio"
+                  value={newRepoDesc}
+                  onChange={(e) => setNewRepoDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="privateRepo"
+                  checked={isPrivateRepo}
+                  onChange={(e) => setIsPrivateRepo(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-800 text-blue-600 focus:ring-0"
+                />
+                <label htmlFor="privateRepo" className="text-xs text-slate-300">Private Repository</label>
+              </div>
+
+              <button
+                onClick={handleCreateNewRepo}
+                disabled={isCreatingRepo || !newRepoName}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-600/20"
+              >
+                {isCreatingRepo ? "Creating Repository..." : "Create New Repository on GitHub"}
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setIsGitHubModalOpen(false)}
+                className="px-4 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
+              >
+                Close Manager
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI STUDIO CONFIGURATION PANEL DRAWER */}
+      {isConfigOpen && (
+        <div className="absolute right-0 top-14 bottom-0 w-80 md:w-96 bg-slate-900 border-l border-slate-800 z-40 p-6 flex flex-col shadow-2xl overflow-y-auto space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-5 h-5 text-blue-400" />
+              <h3 className="text-sm font-semibold text-white">Google AI Studio Settings</h3>
+            </div>
+            <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+          </div>
+
+          {/* Temperature Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-300 font-medium">Temperature</span>
+              <span className="font-mono text-blue-400">{temperature}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              className="w-full accent-blue-600 bg-slate-950 h-2 rounded-lg cursor-pointer"
+            />
+            <p className="text-[10px] text-slate-500">Lower values are more precise and deterministic (0.1 for bug-free code).</p>
+          </div>
+
+          {/* Top P Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-300 font-medium">Top P</span>
+              <span className="font-mono text-blue-400">{topP}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={topP}
+              onChange={(e) => setTopP(parseFloat(e.target.value))}
+              className="w-full accent-blue-600 bg-slate-950 h-2 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Top K Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-300 font-medium">Top K</span>
+              <span className="font-mono text-blue-400">{topK}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={topK}
+              onChange={(e) => setTopK(parseInt(e.target.value))}
+              className="w-full accent-blue-600 bg-slate-950 h-2 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Thinking Level Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-300 block">Thinking Level</label>
+            <select
+              value={thinkingLevel}
+              onChange={(e) => setThinkingLevel(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="HIGH">High (Maximum Reasoning)</option>
+              <option value="MEDIUM">Medium (Balanced)</option>
+              <option value="LOW">Low (Fast)</option>
+              <option value="MINIMAL">Minimal (Instant)</option>
+            </select>
+          </div>
+
+          {/* Custom System Instruction Editor */}
+          <div className="space-y-2 flex-1 flex flex-col">
+            <label className="text-xs font-medium text-slate-300 block">System Instructions</label>
+            <textarea
+              value={customSystemInstruction}
+              onChange={(e) => setCustomSystemInstruction(e.target.value)}
+              placeholder="Enter custom instructions or leave blank to use RepoMind AI's maximum intelligence engineer profile..."
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono resize-none focus:outline-none focus:border-blue-500 min-h-[140px]"
+            />
+          </div>
+
+          <button
+            onClick={() => setIsConfigOpen(false)}
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-blue-600/20"
+          >
+            Apply Settings
+          </button>
+        </div>
+      )}
 
     </div>
   );
