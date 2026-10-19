@@ -1,0 +1,6 @@
+{
+  "name": "RepoMind AI - GitHub AI Coding Assistant",
+  "description": "World-class AI coding assistant integrated with GitHub that helps you code in any and all languages with human-level reasoning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
