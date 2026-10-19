@@ -1,8 +1,9 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -33,22 +34,26 @@ async function startServer() {
         return res.status(400).json({ error: "Message is required" });
       }
 
-      let systemInstruction = `You are RepoMind AI, a world-class AI coding assistant as smart as humanly possible, specializing in ALL programming languages (TypeScript, JavaScript, Python, Rust, Go, C++, C#, Java, Ruby, PHP, Swift, Kotlin, SQL, Solidity, Haskell, HTML/CSS, Shell, etc.).
-You write pristine, highly optimized, secure, robust, production-ready code with complete error handling.
-You understand complex architectures, algorithms, refactoring, debugging, and testing.`;
+      let systemInstruction = `You are RepoMind AI, the world's most advanced AI software engineering expert, operating at maximum possible intelligence. You specialize in ALL programming languages (TypeScript, JavaScript, Python, Rust, Go, C++, C#, Java, Ruby, PHP, Swift, Kotlin, SQL, Solidity, Haskell, HTML/CSS, Shell, etc.).
+
+CRITICAL QUALITY GUARANTEE:
+1. Every code snippet you write MUST BE 100% syntactically and logically correct, robust, secure, and production-ready with zero bugs, zero syntax errors, and zero unhandled edge cases.
+2. Never use placeholders like "// TODO", "/* implement here */", or ellipses (...). Write fully complete, functioning implementations.
+3. Always include proper type definitions, robust error handling (try/catch, null/undefined checks, input validation), and necessary imports.
+4. Reason step-by-step through complex algorithms, memory safety, concurrency, and architecture before emitting the final code.`;
 
       if (persona === "architect") {
-        systemInstruction += ` You are acting as a Principal Software Architect. Focus on system design, scalability, microservices, security hardening, clean separation of concerns, and robust architectural patterns.`;
+        systemInstruction += ` You are acting as a Principal Software Architect. Focus on enterprise-grade system design, scalability, microservices, security hardening, clean separation of concerns, and robust architectural patterns.`;
       } else if (persona === "security") {
-        systemInstruction += ` You are acting as an Elite Security Auditor. Focus on vulnerability detection (OWASP Top 10, injections, memory safety, auth flaws), secure coding practices, encryption, and hardening.`;
+        systemInstruction += ` You are acting as an Elite Security Auditor. Focus on vulnerability detection (OWASP Top 10, injections, memory safety, race conditions, auth flaws), secure coding practices, encryption, and zero-trust verification.`;
       } else if (persona === "performance") {
-        systemInstruction += ` You are acting as a Performance & Algorithmic Optimization Guru. Focus on time and space complexity ($O(n)$ optimization), memory profiling, concurrency, caching strategies, and ultra-fast execution.`;
+        systemInstruction += ` You are acting as a Performance & Algorithmic Optimization Guru. Focus on optimal $O(n)$ time and space complexity, memory profiling, lock-free concurrency, caching strategies, and ultra-fast execution.`;
       } else if (persona === "tester") {
-        systemInstruction += ` You are acting as a Test Automation & QA Master. Focus on comprehensive test coverage, unit tests, integration tests, edge cases, mocking, and TDD workflows.`;
+        systemInstruction += ` You are acting as a Test Automation & QA Master. Focus on comprehensive test coverage, unit tests, integration tests, boundary conditions, mocking, and bulletproof TDD workflows.`;
       }
 
       if (repoContext) {
-        systemInstruction += `\n\nActive GitHub Repository Context:\nRepository: ${repoContext.fullName || 'Selected Repository'}\nDescription: ${repoContext.description || 'N/A'}\nActive File: ${repoContext.activeFilePath || 'N/A'}\nFile Content:\n\`\`\`\n${repoContext.activeFileContent || 'No active file selected'}\n\`\`\``;
+        systemInstruction += `\n\nConnected GitHub Repository Context:\nRepository: ${repoContext.fullName || 'Connected Project'}\nDescription: ${repoContext.description || 'AI Studio Connected Repository'}\nActive File: ${repoContext.activeFilePath || 'N/A'}\nFile Content:\n\`\`\`\n${repoContext.activeFileContent || 'No active file selected'}\n\`\`\``;
       }
 
       // Format conversation history for Gemini
@@ -69,7 +74,7 @@ You understand complex architectures, algorithms, refactoring, debugging, and te
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
-          temperature: 0.2,
+          temperature: 0.1, // Ultra-low temperature for maximum logical precision and zero hallucinations
           topP: 0.95,
         }
       });
@@ -85,152 +90,70 @@ You understand complex architectures, algorithms, refactoring, debugging, and te
     }
   });
 
-  // 2. GitHub Repositories Proxy (fetches user's public repos or preset popular repos)
-  app.post("/api/github/repos", async (req, res) => {
+  // 2. Load Connected Repository Files (Local workspace inspection)
+  app.get("/api/repository/files", async (req, res) => {
     try {
-      const { token, query = "" } = req.body;
+      const rootDir = __dirname;
+      const ignoreDirs = ['node_modules', '.git', 'dist', '.aistudio'];
       
-      let repos = [];
-      if (token) {
-        const ghRes = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "RepoMind-AI"
+      const filesList: any[] = [];
+      
+      function walkDir(currentPath: string, relativeToRoot: string = "") {
+        const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+        for (const entry of entries) {
+          if (ignoreDirs.includes(entry.name)) continue;
+          const relPath = relativeToRoot ? `${relativeToRoot}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            filesList.push({ name: entry.name, type: "dir", path: relPath });
+            walkDir(path.join(currentPath, entry.name), relPath);
+          } else {
+            filesList.push({ name: entry.name, type: "file", path: relPath });
           }
-        });
-        if (ghRes.ok) {
-          repos = await ghRes.json();
-        } else {
-          const errData = await ghRes.json();
-          return res.status(ghRes.status).json({ error: errData.message || "Failed to fetch GitHub repositories with token." });
         }
-      } else {
-        // Return rich curated open source repositories for instant exploration
-        repos = [
-          {
-            id: 1,
-            full_name: "facebook/react",
-            name: "react",
-            description: "The library for web and native user interfaces",
-            language: "JavaScript",
-            stargazers_count: 228000,
-            html_url: "https://github.com/facebook/react"
-          },
-          {
-            id: 2,
-            full_name: "vercel/next.js",
-            name: "next.js",
-            description: "The React Framework for the Web",
-            language: "TypeScript",
-            stargazers_count: 124000,
-            html_url: "https://github.com/vercel/next.js"
-          },
-          {
-            id: 3,
-            full_name: "torvalds/linux",
-            name: "linux",
-            description: "Linux kernel source tree",
-            language: "C",
-            stargazers_count: 175000,
-            html_url: "https://github.com/torvalds/linux"
-          },
-          {
-            id: 4,
-            full_name: "python/cpython",
-            name: "cpython",
-            description: "The Python programming language",
-            language: "Python",
-            stargazers_count: 62000,
-            html_url: "https://github.com/python/cpython"
-          },
-          {
-            id: 5,
-            full_name: "rust-lang/rust",
-            name: "rust",
-            description: "Empowering everyone to build reliable and efficient software.",
-            language: "Rust",
-            stargazers_count: 95000,
-            html_url: "https://github.com/rust-lang/rust"
-          },
-          {
-            id: 6,
-            full_name: "golang/go",
-            name: "go",
-            description: "The Go programming language",
-            language: "Go",
-            stargazers_count: 119000,
-            html_url: "https://github.com/golang/go"
-          }
-        ];
       }
 
-      if (query) {
-        const q = query.toLowerCase();
-        repos = repos.filter((r: any) => 
-          r.full_name.toLowerCase().includes(q) || 
-          (r.description && r.description.toLowerCase().includes(q))
-        );
+      walkDir(rootDir);
+
+      // Read default active file (src/App.tsx)
+      let defaultContent = "";
+      const defaultPath = "src/App.tsx";
+      try {
+        defaultContent = fs.readFileSync(path.join(rootDir, defaultPath), "utf8");
+      } catch {
+        defaultContent = "// Connected repository ready";
       }
 
-      res.json({ repos });
+      res.json({
+        repositoryName: "Connected GitHub Repository",
+        description: "Active repository synchronized directly with RepoMind AI",
+        tree: filesList,
+        defaultFile: { path: defaultPath, content: defaultContent }
+      });
     } catch (error: any) {
-      console.error("GitHub Repos error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch repositories." });
+      console.error("Repository files error:", error);
+      res.status(500).json({ error: error.message || "Failed to load connected repository files." });
     }
   });
 
-  // 3. GitHub Repo Tree & Files Fetcher
-  app.post("/api/github/contents", async (req, res) => {
+  // 3. Read specific file content
+  app.post("/api/repository/file-content", async (req, res) => {
     try {
-      const { fullName, token, path: subPath = "" } = req.body;
-      if (!fullName) {
-        return res.status(400).json({ error: "Repository fullName is required" });
+      const { filePath } = req.body;
+      if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
       }
-
-      const headers: any = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "RepoMind-AI"
-      };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      const safePath = path.resolve(__dirname, filePath);
+      if (!safePath.startsWith(__dirname)) {
+        return res.status(403).json({ error: "Access denied" });
       }
-
-      const url = `https://api.github.com/repos/${fullName}/contents/${subPath}`;
-      const ghRes = await fetch(url, { headers });
-
-      if (!ghRes.ok) {
-        // If live fetch fails or requires auth, return simulated professional file tree for the repo
-        return res.json({
-          tree: [
-            { name: "src", type: "dir", path: "src" },
-            { name: "package.json", type: "file", path: "package.json" },
-            { name: "README.md", type: "file", path: "README.md" },
-            { name: "tsconfig.json", type: "file", path: "tsconfig.json" }
-          ],
-          content: null
-        });
-      }
-
-      const data = await ghRes.json();
-      if (Array.isArray(data)) {
-        res.json({ tree: data, content: null });
-      } else {
-        // It's a file
-        let fileContent = "";
-        if (data.content && data.encoding === "base64") {
-          fileContent = Buffer.from(data.content, "base64").toString("utf8");
-        }
-        res.json({ tree: null, content: fileContent, path: data.path });
-      }
-
+      const content = fs.readFileSync(safePath, "utf8");
+      res.json({ path: filePath, content });
     } catch (error: any) {
-      console.error("GitHub Contents error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch repository contents." });
+      res.status(500).json({ error: error.message || "Failed to read file." });
     }
   });
 
-  // 4. Code Operations: Explain, Refactor, Generate
+  // 4. Code Operations: Explain, Refactor, Generate, Test
   app.post("/api/code/op", async (req, res) => {
     try {
       const { operation, code, language, instruction } = req.body;
@@ -239,7 +162,7 @@ You understand complex architectures, algorithms, refactoring, debugging, and te
       if (operation === "explain") {
         prompt = `Explain the following ${language || 'code'} in crystal clear detail. Break down its logic, architecture, time/space complexity, and potential improvements:\n\n\`\`\`${language || ''}\n${code}\n\`\`\``;
       } else if (operation === "refactor") {
-        prompt = `Refactor the following ${language || 'code'} for maximum performance, readability, safety, and idiomatic best practices. Provide the refactored code block and explain the key changes:\n\n\`\`\`${language || ''}\n${code}\n\`\`\``;
+        prompt = `Refactor the following ${language || 'code'} for maximum performance, readability, safety, and idiomatic best practices. Ensure 100% bug-free, robust implementation without placeholders:\n\n\`\`\`${language || ''}\n${code}\n\`\`\``;
       } else if (operation === "test") {
         prompt = `Write comprehensive unit tests for the following ${language || 'code'} covering edge cases, happy paths, and error handling:\n\n\`\`\`${language || ''}\n${code}\n\`\`\``;
       } else {
@@ -250,8 +173,8 @@ You understand complex architectures, algorithms, refactoring, debugging, and te
         model: "gemini-3.8-flash",
         contents: prompt,
         config: {
-          systemInstruction: "You are an elite principal engineer and code reviewer. Provide thorough, exceptionally clear explanations and production-grade code.",
-          temperature: 0.2
+          systemInstruction: "You are an elite principal engineer and code reviewer. Provide thorough, 100% bug-free, production-grade code with complete error handling and zero placeholders.",
+          temperature: 0.1
         }
       });
 

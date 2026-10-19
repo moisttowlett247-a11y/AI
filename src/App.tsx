@@ -17,21 +17,13 @@ import {
   Check,
   FileCode,
   Folder,
-  FolderOpen,
   Search,
   Settings,
   Sparkles,
   RefreshCw,
   MessageSquare,
   BookOpen,
-  Layers,
   Send,
-  Lock,
-  Unlock,
-  ChevronRight,
-  ChevronDown,
-  AlertCircle,
-  HelpCircle,
   CheckCircle2
 } from "lucide-react";
 import { marked } from "marked";
@@ -41,45 +33,33 @@ interface Message {
   content: string;
 }
 
-interface Repo {
-  id: number;
-  full_name: string;
-  name: string;
-  description: string;
-  language: string;
-  stargazers_count: number;
-  html_url: string;
-}
-
 export default function App() {
   // Navigation & State
   const [activeTab, setActiveTab] = useState<"chat" | "workspace" | "sandbox">("chat");
   const [persona, setPersona] = useState<string>("general");
   const [model, setModel] = useState<string>("gemini-3.8-flash");
   
-  // GitHub Integration State
-  const [githubToken, setGithubToken] = useState<string>("");
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState<boolean>(false);
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-  const [repoSearchQuery, setRepoSearchQuery] = useState<string>("");
+  // Connected GitHub Repository State
+  const [repoName, setRepoName] = useState<string>("Connected GitHub Repository");
+  const [repoDescription, setRepoDescription] = useState<string>("Synchronized with connected GitHub repository");
   const [fileTree, setFileTree] = useState<any[]>([]);
-  const [activeFilePath, setActiveFilePath] = useState<string>("");
+  const [activeFilePath, setActiveFilePath] = useState<string>("src/App.tsx");
   const [activeFileContent, setActiveFileContent] = useState<string>("");
   const [isRepoLoading, setIsRepoLoading] = useState<boolean>(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState<string>("");
 
   // Chat State
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      content: "Hello! I am **RepoMind AI**, your world-class GitHub coding assistant. I can help you write, debug, explain, refactor, and test code in **any programming language** with human-level reasoning. Select a repository on the left or ask me any coding question!"
+      content: "Hello! I am **RepoMind AI**, connected directly to your **GitHub Repository**. I have full context of your codebase and can help you write, debug, explain, refactor, and test code in **any programming language** with human-level reasoning."
     }
   ]);
   const [inputMessage, setInputMessage] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
   // Code Workspace State
-  const [workspaceCode, setWorkspaceCode] = useState<string>('// Select a file from the repository or write code here\nfunction calculateFibonacci(n: number): number {\n  if (n <= 1) return n;\n  return calculateFibonacci(n - 1) + calculateFibonacci(n - 2);\n}\n\nconsole.log(calculateFibonacci(10));');
+  const [workspaceCode, setWorkspaceCode] = useState<string>('');
   const [workspaceLanguage, setWorkspaceLanguage] = useState<string>("typescript");
   const [codeOpResult, setCodeOpResult] = useState<string>("");
   const [isCodeOpLoading, setIsCodeOpLoading] = useState<boolean>(false);
@@ -90,65 +70,69 @@ export default function App() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch repositories on load or token change
+  // Load connected repository files on mount
   useEffect(() => {
-    fetchRepos();
-  }, [githubToken]);
+    fetchRepositoryFiles();
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isGenerating]);
 
-  const fetchRepos = async () => {
+  const fetchRepositoryFiles = async () => {
     try {
       setIsRepoLoading(true);
-      const res = await fetch("/api/github/repos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: githubToken, query: repoSearchQuery })
-      });
+      const res = await fetch("/api/repository/files");
       const data = await res.json();
-      if (data.repos) {
-        setRepos(data.repos);
-        if (!selectedRepo && data.repos.length > 0) {
-          setSelectedRepo(data.repos[0]);
-          loadRepoContents(data.repos[0].full_name, "");
-        }
+      if (data.tree) {
+        setFileTree(data.tree);
+        setRepoName(data.repositoryName || "Connected GitHub Repository");
+        setRepoDescription(data.description || "Synchronized with connected GitHub repository");
+      }
+      if (data.defaultFile) {
+        setActiveFilePath(data.defaultFile.path);
+        setActiveFileContent(data.defaultFile.content);
+        setWorkspaceCode(data.defaultFile.content);
+        detectLanguage(data.defaultFile.path);
       }
     } catch (err) {
-      console.error("Failed to load repos:", err);
+      console.error("Failed to load repository files:", err);
     } finally {
       setIsRepoLoading(false);
     }
   };
 
-  const loadRepoContents = async (fullName: string, path: string = "") => {
+  const loadFileContent = async (path: string) => {
     try {
-      const res = await fetch("/api/github/contents", {
+      setActiveFilePath(path);
+      detectLanguage(path);
+      const res = await fetch("/api/repository/file-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, token: githubToken, path })
+        body: JSON.stringify({ filePath: path })
       });
       const data = await res.json();
-      if (data.tree) {
-        setFileTree(data.tree);
-      }
-      if (data.content) {
+      if (data.content !== undefined) {
         setActiveFileContent(data.content);
         setWorkspaceCode(data.content);
-        setActiveFilePath(data.path);
-        // Detect language
-        if (data.path.endsWith('.ts') || data.path.endsWith('.tsx')) setWorkspaceLanguage('typescript');
-        else if (data.path.endsWith('.js') || data.path.endsWith('.jsx')) setWorkspaceLanguage('javascript');
-        else if (data.path.endsWith('.py')) setWorkspaceLanguage('python');
-        else if (data.path.endsWith('.rs')) setWorkspaceLanguage('rust');
-        else if (data.path.endsWith('.go')) setWorkspaceLanguage('go');
-        else if (data.path.endsWith('.cpp') || data.path.endsWith('.cc')) setWorkspaceLanguage('cpp');
-        else if (data.path.endsWith('.java')) setWorkspaceLanguage('java');
       }
     } catch (err) {
-      console.error("Failed to load repo contents:", err);
+      console.error("Failed to load file content:", err);
     }
+  };
+
+  const detectLanguage = (path: string) => {
+    if (path.endsWith('.ts') || path.endsWith('.tsx')) setWorkspaceLanguage('typescript');
+    else if (path.endsWith('.js') || path.endsWith('.jsx')) setWorkspaceLanguage('javascript');
+    else if (path.endsWith('.py')) setWorkspaceLanguage('python');
+    else if (path.endsWith('.rs')) setWorkspaceLanguage('rust');
+    else if (path.endsWith('.go')) setWorkspaceLanguage('go');
+    else if (path.endsWith('.cpp') || path.endsWith('.cc')) setWorkspaceLanguage('cpp');
+    else if (path.endsWith('.java')) setWorkspaceLanguage('java');
+    else if (path.endsWith('.json')) setWorkspaceLanguage('json');
+    else if (path.endsWith('.html')) setWorkspaceLanguage('html');
+    else if (path.endsWith('.css')) setWorkspaceLanguage('css');
+    else setWorkspaceLanguage('plaintext');
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -162,12 +146,12 @@ export default function App() {
     setIsGenerating(true);
 
     try {
-      const repoContext = selectedRepo ? {
-        fullName: selectedRepo.full_name,
-        description: selectedRepo.description,
+      const repoContext = {
+        fullName: repoName,
+        description: repoDescription,
         activeFilePath,
         activeFileContent: workspaceCode
-      } : null;
+      };
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -255,6 +239,10 @@ export default function App() {
     }
   };
 
+  const filteredFileTree = fileTree.filter(item => 
+    item.path.toLowerCase().includes(fileSearchQuery.toLowerCase())
+  );
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       
@@ -268,7 +256,7 @@ export default function App() {
           </div>
           <div>
             <span className="text-lg font-bold tracking-tight text-white whitespace-nowrap">RepoMind AI</span>
-            <span className="text-[10px] text-blue-400 font-mono block -mt-1">GitHub Supercharged</span>
+            <span className="text-[10px] text-blue-400 font-mono block -mt-1">Connected GitHub Repository</span>
           </div>
         </div>
 
@@ -294,70 +282,42 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: Primary Action & GitHub Token */}
+        {/* Zone 3: Connected GitHub Status Badge */}
         <div className="flex items-center gap-3 shrink-0">
-          {selectedRepo ? (
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
-              <Github className="w-3.5 h-3.5 text-blue-400" />
-              <span className="font-medium truncate max-w-[160px]">{selectedRepo.full_name}</span>
-            </div>
-          ) : null}
-
-          <button
-            onClick={() => setIsTokenModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all border border-slate-700"
-          >
-            {githubToken ? <Lock className="w-3.5 h-3.5 text-emerald-400" /> : <Unlock className="w-3.5 h-3.5 text-amber-400" />}
-            <span>{githubToken ? "GitHub Connected" : "Connect GitHub"}</span>
-          </button>
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <Github className="w-3.5 h-3.5 text-slate-200" />
+            <span className="font-medium truncate max-w-[180px]">GitHub Synchronized</span>
+          </div>
         </div>
       </header>
 
       {/* MAIN WORKSPACE LAYOUT */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* LEFT SIDEBAR: GitHub Repository Inspector */}
+        {/* LEFT SIDEBAR: Connected Repository File Inspector */}
         <aside className="w-80 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
           
           <div className="p-4 border-b border-slate-800">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Repository Explorer</span>
-              <button onClick={fetchRepos} title="Refresh Repositories" className="text-slate-400 hover:text-white transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Repository Files</span>
+              <button onClick={fetchRepositoryFiles} title="Refresh Repository Files" className="text-slate-400 hover:text-white transition-colors">
                 <RefreshCw className={`w-3.5 h-3.5 ${isRepoLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
+            <p className="text-[11px] text-slate-500 truncate mb-3">{repoDescription}</p>
 
-            {/* Repo Search & Switcher */}
-            <div className="relative mb-3">
+            {/* File Search */}
+            <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Search repositories..."
-                value={repoSearchQuery}
-                onChange={(e) => setRepoSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchRepos()}
+                placeholder="Filter files..."
+                value={fileSearchQuery}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
-
-            {/* Repo Selector Dropdown */}
-            <select
-              value={selectedRepo?.full_name || ""}
-              onChange={(e) => {
-                const found = repos.find(r => r.full_name === e.target.value);
-                if (found) {
-                  setSelectedRepo(found);
-                  loadRepoContents(found.full_name, "");
-                }
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-            >
-              {repos.map(r => (
-                <option key={r.id} value={r.full_name}>
-                  {r.full_name} ({r.language || 'Code'})
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Expert Persona & Model Selector */}
@@ -392,24 +352,22 @@ export default function App() {
 
           {/* File Tree List */}
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-2 block mb-2">Files</span>
-            {fileTree.length === 0 ? (
-              <div className="text-xs text-slate-500 p-3 text-center">No files loaded. Select a repo.</div>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-2 block mb-2">Project Files</span>
+            {filteredFileTree.length === 0 ? (
+              <div className="text-xs text-slate-500 p-3 text-center">No matching files found.</div>
             ) : (
-              fileTree.map((item, idx) => (
+              filteredFileTree.map((item, idx) => (
                 <button
                   key={idx}
                   onClick={() => {
-                    if (item.type === 'dir') {
-                      loadRepoContents(selectedRepo!.full_name, item.path);
-                    } else {
-                      loadRepoContents(selectedRepo!.full_name, item.path);
+                    if (item.type === 'file') {
+                      loadFileContent(item.path);
                     }
                   }}
                   className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${activeFilePath === item.path ? 'bg-blue-600/20 text-blue-300 font-medium' : 'text-slate-300 hover:bg-slate-800/60'}`}
                 >
                   {item.type === 'dir' ? <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <FileCode className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate">{item.path}</span>
                 </button>
               ))
             )}
@@ -452,7 +410,7 @@ export default function App() {
                     </div>
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 flex items-center gap-3">
                       <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                      <span>RepoMind AI is reasoning across languages and repositories...</span>
+                      <span>RepoMind AI is reasoning across your connected repository...</span>
                     </div>
                   </div>
                 )}
@@ -464,7 +422,7 @@ export default function App() {
                 <form onSubmit={handleSendMessage} className="flex gap-3 max-w-5xl mx-auto">
                   <input
                     type="text"
-                    placeholder="Ask any coding question in any language (e.g. Optimize this algorithm in Rust, fix memory leak in C++, write React hook)..."
+                    placeholder="Ask any coding question in any language (e.g. Optimize this file in Rust, explain architecture, add feature)..."
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs md:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 shadow-inner"
@@ -503,7 +461,9 @@ export default function App() {
                     <option value="cpp">C++</option>
                     <option value="java">Java</option>
                     <option value="sql">SQL</option>
-                    <option value="solidity">Solidity</option>
+                    <option value="json">JSON</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
                   </select>
                 </div>
 
@@ -548,7 +508,7 @@ export default function App() {
                 {/* Code Editor */}
                 <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
                   <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
-                    <span className="text-xs font-mono text-slate-400">Editor</span>
+                    <span className="text-xs font-mono text-slate-400">{activeFilePath}</span>
                     <button
                       onClick={() => navigator.clipboard.writeText(workspaceCode)}
                       className="text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs"
@@ -561,7 +521,6 @@ export default function App() {
                     value={workspaceCode}
                     onChange={(e) => setWorkspaceCode(e.target.value)}
                     className="flex-1 bg-slate-950 p-4 font-mono text-xs text-slate-200 resize-none focus:outline-none leading-relaxed"
-                    placeholder="Write or paste your code here..."
                   />
                 </div>
 
@@ -580,7 +539,7 @@ export default function App() {
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center">
                         <Sparkles className="w-8 h-8 text-slate-600 mb-2" />
-                        <p>Click Explain, Refactor, or Write Tests above to let RepoMind AI analyze your code.</p>
+                        <p>Click Explain, Refactor, or Write Tests above to let RepoMind AI analyze this file.</p>
                       </div>
                     )}
                   </div>
@@ -622,48 +581,6 @@ export default function App() {
 
         </main>
       </div>
-
-      {/* GITHUB TOKEN MODAL */}
-      {isTokenModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Github className="w-5 h-5 text-white" />
-                <h3 className="text-sm font-semibold text-white">Connect GitHub Account</h3>
-              </div>
-              <button onClick={() => setIsTokenModalOpen(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Enter your GitHub Personal Access Token (PAT) to access your private repositories and enable deep repository context analysis. If left blank, RepoMind AI will use curated open-source repositories.
-            </p>
-            <input
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
-            />
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setIsTokenModalOpen(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setIsTokenModalOpen(false);
-                  fetchRepos();
-                }}
-                className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-all shadow-md shadow-blue-600/20"
-              >
-                Save & Connect
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
