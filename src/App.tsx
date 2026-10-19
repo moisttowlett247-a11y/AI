@@ -66,7 +66,7 @@ export default function App() {
   // Google AI Studio Navigation & Prompt Types
   const [promptType, setPromptType] = useState<"chat" | "freeform" | "structured">("chat");
   const [activeTab, setActiveTab] = useState<"prompt" | "preview" | "code" | "workspace">("prompt");
-  const [model, setModel] = useState<string>("gemini-2.5-flash");
+  const [model, setModel] = useState<string>("gemini-3.8-flash");
   
   // Mobile UI drawers
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -714,9 +714,9 @@ export default function App() {
               onChange={(e) => setModel(e.target.value)}
               className="bg-[#111318] border border-[#2d3139] text-slate-200 text-xs rounded-lg px-2.5 sm:px-3 py-1.5 focus:outline-none focus:border-blue-500 font-mono hidden sm:block"
             >
+              <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended)</option>
               <option value="gemini-2.5-flash">gemini-2.5-flash</option>
               <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-              <option value="gemini-3.8-flash">gemini-3.8-flash</option>
             </select>
 
             {/* Mobile config toggle */}
