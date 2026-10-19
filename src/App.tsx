@@ -24,7 +24,8 @@ import {
   MessageSquare,
   BookOpen,
   Send,
-  CheckCircle2
+  Menu,
+  X
 } from "lucide-react";
 import { marked } from "marked";
 
@@ -38,6 +39,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"chat" | "workspace" | "sandbox">("chat");
   const [persona, setPersona] = useState<string>("general");
   const [model, setModel] = useState<string>("gemini-3.8-flash");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   
   // Connected GitHub Repository State
   const [repoName, setRepoName] = useState<string>("Connected GitHub Repository");
@@ -106,6 +108,7 @@ export default function App() {
     try {
       setActiveFilePath(path);
       detectLanguage(path);
+      setIsMobileMenuOpen(false);
       const res = await fetch("/api/repository/file-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -247,16 +250,22 @@ export default function App() {
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       
       {/* TOP NAVIGATION BAR (Strict 3-zone contract) */}
-      <header className="flex items-center justify-between gap-8 px-6 py-3.5 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md z-20 shrink-0">
+      <header className="flex items-center justify-between gap-4 px-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md z-30 shrink-0">
         
-        {/* Zone 1: Wordmark */}
+        {/* Zone 1: Wordmark & Mobile Hamburger */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Cpu className="w-5 h-5 text-white" />
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Cpu className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
           <div>
-            <span className="text-lg font-bold tracking-tight text-white whitespace-nowrap">RepoMind AI</span>
-            <span className="text-[10px] text-blue-400 font-mono block -mt-1">Connected GitHub Repository</span>
+            <span className="text-base md:text-lg font-bold tracking-tight text-white whitespace-nowrap">RepoMind AI</span>
+            <span className="text-[9px] md:text-[10px] text-blue-400 font-mono block -mt-1 truncate max-w-[120px] md:max-w-none">Connected GitHub Repo</span>
           </div>
         </div>
 
@@ -266,42 +275,67 @@ export default function App() {
             onClick={() => setActiveTab("chat")}
             className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            AI Coding Chat
+            AI Chat
           </button>
           <button
             onClick={() => setActiveTab("workspace")}
             className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'workspace' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Code Workspace & Diff
+            Workspace
           </button>
           <button
             onClick={() => setActiveTab("sandbox")}
             className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === 'sandbox' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
           >
-            Sandbox & Tests
+            Sandbox
           </button>
         </nav>
 
         {/* Zone 3: Connected GitHub Status Badge */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 shadow-sm">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <Github className="w-3.5 h-3.5 text-slate-200" />
-            <span className="font-medium truncate max-w-[180px]">GitHub Synchronized</span>
+            <span className="font-medium">Synced</span>
           </div>
         </div>
       </header>
 
+      {/* MOBILE TABS BAR (Visible only on mobile) */}
+      <div className="md:hidden flex items-center justify-around bg-slate-900 border-b border-slate-800 p-1 shrink-0">
+        <button
+          onClick={() => setActiveTab("chat")}
+          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'chat' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
+        >
+          AI Chat
+        </button>
+        <button
+          onClick={() => setActiveTab("workspace")}
+          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'workspace' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
+        >
+          Workspace
+        </button>
+        <button
+          onClick={() => setActiveTab("sandbox")}
+          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${activeTab === 'sandbox' ? 'text-blue-400 border-b-2 border-blue-500 font-semibold' : 'text-slate-400'}`}
+        >
+          Sandbox
+        </button>
+      </div>
+
       {/* MAIN WORKSPACE LAYOUT */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         
-        {/* LEFT SIDEBAR: Connected Repository File Inspector */}
-        <aside className="w-80 border-r border-slate-800 bg-slate-900/40 flex flex-col shrink-0">
+        {/* SIDEBAR: Connected Repository File Inspector (Desktop + Mobile Drawer) */}
+        <aside className={`
+          absolute md:relative inset-y-0 left-0 z-20 w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-transform duration-300
+          ${isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'}
+        `}>
           
           <div className="p-4 border-b border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Repository Files</span>
-              <button onClick={fetchRepositoryFiles} title="Refresh Repository Files" className="text-slate-400 hover:text-white transition-colors">
+              <button onClick={fetchRepositoryFiles} title="Refresh Repository Files" className="text-slate-400 hover:text-white transition-colors p-1">
                 <RefreshCw className={`w-3.5 h-3.5 ${isRepoLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
@@ -315,7 +349,7 @@ export default function App() {
                 placeholder="Filter files..."
                 value={fileSearchQuery}
                 onChange={(e) => setFileSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
@@ -327,7 +361,7 @@ export default function App() {
               <select
                 value={persona}
                 onChange={(e) => setPersona(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
                 <option value="general">Universal Coding Master</option>
                 <option value="architect">Principal Software Architect</option>
@@ -342,10 +376,10 @@ export default function App() {
               <select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
-                <option value="gemini-3.8-flash">Gemini 3.8 Flash (Lightning Fast)</option>
-                <option value="gemini-4-argon">Gemini 4 Argon (Advanced Reasoning)</option>
+                <option value="gemini-3.8-flash">Gemini 3.8 Flash (Fast)</option>
+                <option value="gemini-4-argon">Gemini 4 Argon (Advanced)</option>
               </select>
             </div>
           </div>
@@ -364,15 +398,23 @@ export default function App() {
                       loadFileContent(item.path);
                     }
                   }}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${activeFilePath === item.path ? 'bg-blue-600/20 text-blue-300 font-medium' : 'text-slate-300 hover:bg-slate-800/60'}`}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors text-left ${activeFilePath === item.path ? 'bg-blue-600/20 text-blue-300 font-medium' : 'text-slate-300 hover:bg-slate-800/60'}`}
                 >
-                  {item.type === 'dir' ? <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <FileCode className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                  {item.type === 'dir' ? <Folder className="w-4 h-4 text-amber-400 shrink-0" /> : <FileCode className="w-4 h-4 text-blue-400 shrink-0" />}
                   <span className="truncate">{item.path}</span>
                 </button>
               ))
             )}
           </div>
         </aside>
+
+        {/* OVERLAY FOR MOBILE DRAWER */}
+        {isMobileMenuOpen && (
+          <div 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="absolute inset-0 bg-black/60 z-10 md:hidden backdrop-blur-xs"
+          />
+        )}
 
         {/* CENTER / MAIN CONTENT AREA */}
         <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
@@ -382,35 +424,35 @@ export default function App() {
             <div className="flex-1 flex flex-col overflow-hidden">
               
               {/* Chat Messages Feed */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
                 {messages.map((msg, index) => (
-                  <div key={index} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={index} className={`flex gap-3 md:gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'model' && (
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shrink-0 shadow-md">
-                        <Sparkles className="w-4 h-4 text-white" />
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shrink-0 shadow-md">
+                        <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
                       </div>
                     )}
-                    <div className={`max-w-3xl rounded-2xl p-4 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-bl-none shadow-xl'}`}>
+                    <div className={`max-w-[85%] md:max-w-3xl rounded-2xl p-3.5 md:p-4 text-xs md:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-bl-none shadow-xl'}`}>
                       <div 
-                        className="prose prose-invert max-w-none text-xs md:text-sm font-sans [&_pre]:bg-slate-950 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-800 [&_code]:font-mono [&_code]:text-xs"
+                        className="prose prose-invert max-w-none text-xs md:text-sm font-sans [&_pre]:bg-slate-950 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-800 [&_code]:font-mono [&_code]:text-xs overflow-x-auto"
                         dangerouslySetInnerHTML={renderMarkdown(msg.content)}
                       />
                     </div>
                     {msg.role === 'user' && (
-                      <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-slate-300">You</span>
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-slate-800 flex items-center justify-center shrink-0">
+                        <span className="text-[10px] md:text-xs font-bold text-slate-300">You</span>
                       </div>
                     )}
                   </div>
                 ))}
                 {isGenerating && (
-                  <div className="flex gap-4 items-center">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shrink-0 animate-pulse">
-                      <Sparkles className="w-4 h-4 text-white" />
+                  <div className="flex gap-3 md:gap-4 items-center">
+                    <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shrink-0 animate-pulse">
+                      <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 flex items-center gap-3">
-                      <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                      <span>RepoMind AI is reasoning across your connected repository...</span>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 md:p-4 text-xs text-slate-400 flex items-center gap-3">
+                      <RefreshCw className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                      <span className="truncate">RepoMind AI is reasoning at maximum intelligence...</span>
                     </div>
                   </div>
                 )}
@@ -418,21 +460,21 @@ export default function App() {
               </div>
 
               {/* Chat Input Bar */}
-              <div className="p-4 border-t border-slate-800 bg-slate-900/60 backdrop-blur-md">
-                <form onSubmit={handleSendMessage} className="flex gap-3 max-w-5xl mx-auto">
+              <div className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/80 backdrop-blur-md">
+                <form onSubmit={handleSendMessage} className="flex gap-2 md:gap-3 max-w-5xl mx-auto">
                   <input
                     type="text"
-                    placeholder="Ask any coding question in any language (e.g. Optimize this file in Rust, explain architecture, add feature)..."
+                    placeholder="Ask any coding question in any language..."
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs md:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 shadow-inner"
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 md:px-4 py-2.5 md:py-3 text-xs md:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 shadow-inner"
                   />
                   <button
                     type="submit"
                     disabled={isGenerating || !inputMessage.trim()}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs md:text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 shrink-0"
+                    className="px-4 md:px-6 py-2.5 md:py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs md:text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 shrink-0"
                   >
-                    <span>Ask AI</span>
+                    <span className="hidden sm:inline">Ask AI</span>
                     <Send className="w-4 h-4" />
                   </button>
                 </form>
@@ -442,16 +484,16 @@ export default function App() {
 
           {/* TAB 2: CODE WORKSPACE & OPERATIONS */}
           {activeTab === 'workspace' && (
-            <div className="flex-1 flex flex-col overflow-hidden p-6 gap-6">
+            <div className="flex-1 flex flex-col overflow-hidden p-4 md:p-6 gap-4 md:gap-6">
               
               {/* Toolbar */}
-              <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-slate-400">Active File: <span className="text-blue-400 font-mono">{activeFilePath || 'Untitled'}</span></span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <span className="text-xs font-medium text-slate-400 truncate max-w-[150px] sm:max-w-none">File: <span className="text-blue-400 font-mono">{activeFilePath || 'Untitled'}</span></span>
                   <select
                     value={workspaceLanguage}
                     onChange={(e) => setWorkspaceLanguage(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 text-xs text-slate-200 focus:outline-none"
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none"
                   >
                     <option value="typescript">TypeScript</option>
                     <option value="javascript">JavaScript</option>
@@ -467,7 +509,7 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => handleCodeOperation("explain")}
                     disabled={isCodeOpLoading}
@@ -490,25 +532,25 @@ export default function App() {
                     className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition-colors flex items-center gap-1.5"
                   >
                     <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Write Tests</span>
+                    <span>Tests</span>
                   </button>
                   <button
                     onClick={handleExecuteSandbox}
                     className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-md"
                   >
                     <Play className="w-3.5 h-3.5" />
-                    <span>Run Simulation</span>
+                    <span>Run</span>
                   </button>
                 </div>
               </div>
 
               {/* Editor & Result Split Grid */}
-              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 overflow-hidden">
                 
                 {/* Code Editor */}
-                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-[220px]">
                   <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
-                    <span className="text-xs font-mono text-slate-400">{activeFilePath}</span>
+                    <span className="text-xs font-mono text-slate-400 truncate max-w-[200px]">{activeFilePath}</span>
                     <button
                       onClick={() => navigator.clipboard.writeText(workspaceCode)}
                       className="text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs"
@@ -525,7 +567,7 @@ export default function App() {
                 </div>
 
                 {/* AI Operation Result / Analysis */}
-                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div className="flex flex-col bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-xl min-h-[220px]">
                   <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
                     <span className="text-xs font-mono text-slate-400">AI Analysis & Refactoring Output</span>
                     {isCodeOpLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-400" />}
@@ -533,11 +575,11 @@ export default function App() {
                   <div className="flex-1 overflow-y-auto p-4 bg-slate-950 text-xs font-sans text-slate-200 leading-relaxed">
                     {codeOpResult ? (
                       <div 
-                        className="prose prose-invert max-w-none text-xs [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-800 [&_code]:font-mono"
+                        className="prose prose-invert max-w-none text-xs [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-800 [&_code]:font-mono overflow-x-auto"
                         dangerouslySetInnerHTML={renderMarkdown(codeOpResult)}
                       />
                     ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center">
+                      <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center p-4">
                         <Sparkles className="w-8 h-8 text-slate-600 mb-2" />
                         <p>Click Explain, Refactor, or Write Tests above to let RepoMind AI analyze this file.</p>
                       </div>
@@ -551,8 +593,8 @@ export default function App() {
 
           {/* TAB 3: SANDBOX & TESTS */}
           {activeTab === 'sandbox' && (
-            <div className="flex-1 flex flex-col overflow-hidden p-6 gap-6">
-              <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
+            <div className="flex-1 flex flex-col overflow-hidden p-4 md:p-6 gap-4 md:gap-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
                 <div>
                   <h2 className="text-sm font-semibold text-white">Virtual Execution & Test Sandbox</h2>
                   <p className="text-xs text-slate-400">Simulate runtime outputs, unit tests, and performance benchmarks instantly.</p>
@@ -563,7 +605,7 @@ export default function App() {
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-semibold text-white rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20"
                 >
                   {isExecuting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                  <span>Run Sandbox Execution</span>
+                  <span>Run Sandbox</span>
                 </button>
               </div>
 
@@ -572,7 +614,7 @@ export default function App() {
                   <Terminal className="w-4 h-4 text-emerald-400" />
                   <span className="text-xs font-mono text-slate-300">Console Output & Test Results</span>
                 </div>
-                <div className="flex-1 bg-slate-950 p-6 font-mono text-xs text-emerald-300 overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                <div className="flex-1 bg-slate-950 p-4 md:p-6 font-mono text-xs text-emerald-300 overflow-y-auto leading-relaxed whitespace-pre-wrap">
                   {sandboxOutput}
                 </div>
               </div>
